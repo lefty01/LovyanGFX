@@ -31,7 +31,9 @@ Contributors:
  #include <alloca.h>
 #else
  #include <malloc.h>
+ #ifndef alloca
  #define alloca _alloca
+ #endif
 #endif
 
 namespace lgfx
@@ -61,7 +63,7 @@ namespace lgfx
  #if defined (FS_H) || defined (__SEEED_FS__) || defined (__LITTLEFS_H) || defined (_LiffleFS_H_) || defined (SDFS_H)
 
     /// load vlw fontdata from filesystem.
-    void loadFont(const char *path, fs::FS &fs
+    bool loadFont(const char *path, fs::FS &fs
 #if defined (_SD_H_)
  = SD
 #elif defined (_SPIFFS_H_)
@@ -74,13 +76,13 @@ namespace lgfx
     )
     {
       init_font_file<FileWrapper>(fs);
-      load_font_with_path(path);
+      return load_font_with_path(path);
     }
 
-    void loadFont(fs::FS &fs, const char *path)
+    bool loadFont(fs::FS &fs, const char *path)
     {
       init_font_file<FileWrapper>(fs);
-      load_font_with_path(path);
+      return load_font_with_path(path);
     }
 
   #define LGFX_FUNCTION_GENERATOR(drawImg, draw_img) \
@@ -142,16 +144,16 @@ namespace lgfx
  #if defined (__STORAGE_H__) // for SPRESENSE
 
     /// load vlw fontdata from filesystem.
-    void loadFont(const char *path, StorageClass &fs)
+    bool loadFont(const char *path, StorageClass &fs)
     {
       init_font_file<FileWrapper>(fs);
-      load_font_with_path(path);
+      return load_font_with_path(path);
     }
 
-    void loadFont(StorageClass &fs, const char *path)
+    bool loadFont(StorageClass &fs, const char *path)
     {
       init_font_file<FileWrapper>(fs);
-      load_font_with_path(path);
+      return load_font_with_path(path);
     }
 
   #define LGFX_FUNCTION_GENERATOR(drawImg, draw_img) \
@@ -217,16 +219,16 @@ namespace lgfx
    #define LGFX_SDFAT_TYPE SdBase<FsVolume>
   #endif
 
-    void loadFont(const char *path, LGFX_SDFAT_TYPE &fs)
+    bool loadFont(const char *path, LGFX_SDFAT_TYPE &fs)
     {
       init_font_file<SdFatWrapper>(fs);
-      load_font_with_path(path);
+      return load_font_with_path(path);
     }
 
-    void loadFont(LGFX_SDFAT_TYPE &fs, const char *path)
+    bool loadFont(LGFX_SDFAT_TYPE &fs, const char *path)
     {
       init_font_file<SdFatWrapper>(fs);
-      load_font_with_path(path);
+      return load_font_with_path(path);
     }
 
   #define LGFX_FUNCTION_GENERATOR(drawImg, draw_img) \
@@ -350,7 +352,7 @@ namespace lgfx
   #endif
  #endif
 
-#elif defined (ESP_PLATFORM) || defined(__SAMD51_HARMONY__) || defined(_INC_STDIO) // ESP-IDF or Harmony
+#elif defined (ESP_PLATFORM) || defined(__SAMD51_HARMONY__) || defined(stdin) // ESP-IDF, Harmony, stdio
 
   #define LGFX_FUNCTION_GENERATOR(drawImg) \
     inline bool drawImg##File(const char *path, int32_t x = 0, int32_t y = 0, int32_t maxWidth = 0, int32_t maxHeight = 0, int32_t offX = 0, int32_t offY = 0, float scale_x = 1.0f, float scale_y = 0.0f, datum_t datum = datum_t::top_left) \
@@ -372,10 +374,10 @@ namespace lgfx
       return drawJpgFile(path, x, y, maxWidth, maxHeight, offX, offY, 1.0f / (1 << scale));
     }
 
-    void loadFont(const char *path)
+    bool loadFont(const char *path)
     {
       init_font_file<FileWrapper>();
-      load_font_with_path(path);
+      return load_font_with_path(path);
     }
 
 #endif

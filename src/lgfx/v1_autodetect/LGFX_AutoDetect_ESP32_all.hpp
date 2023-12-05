@@ -24,8 +24,9 @@ Contributors:
 #include <memory>
 #include <esp_log.h>
 #include <driver/i2c.h>
-#include <soc/gpio_reg.h>
 #include <soc/efuse_reg.h>
+#include <soc/gpio_periph.h>
+#include <soc/gpio_reg.h>
 #include <soc/io_mux_reg.h>
 #if __has_include(<hal/gpio_types.h>)
  #include <hal/gpio_types.h>
@@ -79,13 +80,13 @@ namespace lgfx
       _rotation = 1; // default rotation
     }
 
-    void reset(void) override
+    void rst_control(bool level) override
     {
       using namespace m5stack;
-      // AXP192 reg 0x96 = GPIO3&4 control
-      lgfx::i2c::writeRegister8(i2c_port, aw9523_i2c_addr, 0x03, 0, ~(1<<5), i2c_freq);  // LCD_RST
-      lgfx::delay(4);
-      lgfx::i2c::writeRegister8(i2c_port, aw9523_i2c_addr, 0x03, (1<<5), ~0, i2c_freq);  // LCD_RST
+      uint8_t bits = level ? (1<<5) : 0;
+      uint8_t mask = level ? ~0 : ~(1<<5);
+      // LCD_RST
+      lgfx::i2c::writeRegister8(i2c_port, aw9523_i2c_addr, 0x03, bits, mask, i2c_freq);
     }
 
     void cs_control(bool flg) override
@@ -175,25 +176,25 @@ namespace lgfx
 #elif defined (CONFIG_IDF_TARGET_ESP32C3)
 #elif defined (CONFIG_IDF_TARGET_ESP32) || !defined (CONFIG_IDF_TARGET)
 
-#if defined( ARDUINO_M5Stack_Core_ESP32 ) || defined( ARDUINO_M5STACK_FIRE )
+#if defined( ARDUINO_M5STACK_CORE_ESP32 ) || defined( ARDUINO_M5Stack_Core_ESP32 ) || defined( ARDUINO_M5STACK_FIRE )
   #define LGFX_M5STACK
   #define LGFX_DEFAULT_BOARD board_t::board_M5Stack
-#elif defined( ARDUINO_M5STACK_Core2 ) // M5Stack Core2
+#elif defined( ARDUINO_M5STACK_CORE2 ) || defined( ARDUINO_M5STACK_Core2 ) // M5Stack Core2
   #define LGFX_M5STACK_CORE2
   #define LGFX_DEFAULT_BOARD board_t::board_M5StackCore2
 #elif defined ( ARDUINO_M5STACK_TOUGH )
   #define LGFX_M5TOUGH
   #define LGFX_DEFAULT_BOARD board_t::board_M5Tough
-#elif defined( ARDUINO_M5Stick_C ) // M5Stick C / CPlus
+#elif defined( ARDUINO_M5STICK_C ) || defined( ARDUINO_M5Stick_C ) // M5Stick C / CPlus
   #define LGFX_M5STICK_C
   #define LGFX_DEFAULT_BOARD board_t::board_M5StickC
-#elif defined( ARDUINO_M5Stick_C_Plus )
+#elif defined( ARDUINO_M5STICK_C_PLUS ) || defined( ARDUINO_M5Stick_C_Plus )
   #define LGFX_M5STICK_C
   #define LGFX_DEFAULT_BOARD board_t::board_M5StickCPlus
-#elif defined( ARDUINO_M5Stack_CoreInk ) // M5Stack CoreInk
+#elif defined( ARDUINO_M5STACK_COREINK ) || defined( ARDUINO_M5Stack_CoreInk ) // M5Stack CoreInk
   #define LGFX_M5STACK_COREINK
   #define LGFX_DEFAULT_BOARD board_t::board_M5StackCoreInk
-#elif defined( ARDUINO_M5STACK_Paper ) // M5Paper
+#elif defined( ARDUINO_M5STACK_PAPER ) || defined( ARDUINO_M5STACK_Paper ) // M5Paper
   #define LGFX_M5PAPER
   #define LGFX_DEFAULT_BOARD board_t::board_M5Paper
 #elif defined( ARDUINO_ODROID_ESP32 ) // ODROID-GO
@@ -202,7 +203,7 @@ namespace lgfx
 #elif defined( ARDUINO_TTGO_T1 ) // TTGO TS
   #define LGFX_TTGO_TS
   #define LGFX_DEFAULT_BOARD board_t::board_TTGO_TS
-#elif defined( ARDUINO_TWatch ) || defined( ARDUINO_T ) // TTGO T-Watch
+#elif defined( ARDUINO_TWATCH ) || defined( ARDUINO_TWatch ) || defined( ARDUINO_T ) // TTGO T-Watch
   #define LGFX_TTGO_TWATCH
   #define LGFX_DEFAULT_BOARD board_t::board_TTGO_TWatch
 #elif defined( ARDUINO_D ) || defined( ARDUINO_DDUINO32_XS ) // DSTIKE D-duino-32 XS
@@ -286,11 +287,16 @@ namespace lgfx
 
     bool init(bool use_reset) override
     {
-      lgfx::gpio_hi(_cfg.pin_rst);
-      lgfx::pinMode(_cfg.pin_rst, lgfx::pin_mode_t::input_pulldown);
-      _cfg.invert = lgfx::gpio_in(_cfg.pin_rst);       // get panel type (IPS or TN)
-      lgfx::pinMode(_cfg.pin_rst, lgfx::pin_mode_t::output);
-
+      _cfg.invert = lgfx::gpio::command(
+        (const uint8_t[]) {
+        lgfx::gpio::command_mode_output        , GPIO_NUM_33,
+        lgfx::gpio::command_write_low          , GPIO_NUM_33,
+        lgfx::gpio::command_mode_input_pulldown, GPIO_NUM_33,
+        lgfx::gpio::command_write_high         , GPIO_NUM_33,
+        lgfx::gpio::command_read               , GPIO_NUM_33,
+        lgfx::gpio::command_mode_output        , GPIO_NUM_33,
+        lgfx::gpio::command_end
+        });
       return lgfx::Panel_ILI9342::init(use_reset);
     }
   };
@@ -306,13 +312,13 @@ namespace lgfx
       _rotation = 1; // default rotation
     }
 
-    void reset(void) override
+    void rst_control(bool level) override
     {
       using namespace m5stack;
+      uint8_t bits = level ? 2 : 0;
+      uint8_t mask = level ? ~0 : ~2;
       // AXP192 reg 0x96 = GPIO3&4 control
-      lgfx::i2c::writeRegister8(axp_i2c_port, axp_i2c_addr, 0x96, 0, ~0x02, axp_i2c_freq); // GPIO4 LOW (LCD RST)
-      lgfx::delay(4);
-      lgfx::i2c::writeRegister8(axp_i2c_port, axp_i2c_addr, 0x96, 2, ~0x00, axp_i2c_freq); // GPIO4 HIGH (LCD RST)
+      lgfx::i2c::writeRegister8(axp_i2c_port, axp_i2c_addr, 0x96, bits, mask, axp_i2c_freq);
     }
   };
 
@@ -548,26 +554,29 @@ namespace lgfx
       {
       public:
         _pin_backup_t(int8_t pin_num)
-          : _io_mux_gpio_reg   { *reinterpret_cast<uint32_t*>(IO_MUX_GPIO0_REG           + (pin_num * 4)) }
-          , _gpio_pin_reg      { *reinterpret_cast<uint32_t*>(GPIO_PIN0_REG              + (pin_num * 4)) }
-          , _gpio_func_out_reg { *reinterpret_cast<uint32_t*>(GPIO_FUNC0_OUT_SEL_CFG_REG + (pin_num * 4)) }
-          , _pin_num           { static_cast<gpio_num_t>(pin_num) }
+        : _pin_num { static_cast<gpio_num_t>(pin_num) }
         {
+          if (pin_num >= 0)
+          {
+            _io_mux_gpio_reg   = *reinterpret_cast<uint32_t*>(GPIO_PIN_MUX_REG[pin_num]);
+            _gpio_pin_reg      = *reinterpret_cast<uint32_t*>(GPIO_PIN0_REG              + (pin_num * 4));
+            _gpio_func_out_reg = *reinterpret_cast<uint32_t*>(GPIO_FUNC0_OUT_SEL_CFG_REG + (pin_num * 4));
 #if defined ( GPIO_ENABLE1_REG )
-          _gpio_enable = *reinterpret_cast<uint32_t*>(((_pin_num & 32) ? GPIO_ENABLE1_REG : GPIO_ENABLE_REG)) & (1 << (_pin_num & 31));
+            _gpio_enable = *reinterpret_cast<uint32_t*>(((_pin_num & 32) ? GPIO_ENABLE1_REG : GPIO_ENABLE_REG)) & (1 << (_pin_num & 31));
 #else
-          _gpio_enable = *reinterpret_cast<uint32_t*>(GPIO_ENABLE_REG) & (1 << (_pin_num & 31));
+            _gpio_enable = *reinterpret_cast<uint32_t*>(GPIO_ENABLE_REG) & (1 << (_pin_num & 31));
 #endif
+          }
         }
 
         void restore(void) const
         {
           if ((int)_pin_num >= 0) {
   // ESP_LOGD("DEBUG","restore pin:%d ", _pin_num);
-  // ESP_LOGD("DEBUG","restore IO_MUX_GPIO0_REG          :%08x -> %08x ", *reinterpret_cast<uint32_t*>(IO_MUX_GPIO0_REG           + (_pin_num * 4)), _io_mux_gpio_reg   );
+  // ESP_LOGD("DEBUG","restore IO_MUX_GPIO0_REG          :%08x -> %08x ", *reinterpret_cast<uint32_t*>(GPIO_PIN_MUX_REG[_pin_num]                 ), _io_mux_gpio_reg   );
   // ESP_LOGD("DEBUG","restore GPIO_PIN0_REG             :%08x -> %08x ", *reinterpret_cast<uint32_t*>(GPIO_PIN0_REG              + (_pin_num * 4)), _gpio_pin_reg      );
   // ESP_LOGD("DEBUG","restore GPIO_FUNC0_OUT_SEL_CFG_REG:%08x -> %08x ", *reinterpret_cast<uint32_t*>(GPIO_FUNC0_OUT_SEL_CFG_REG + (_pin_num * 4)), _gpio_func_out_reg );
-            *reinterpret_cast<uint32_t*>(IO_MUX_GPIO0_REG           + (_pin_num * 4)) = _io_mux_gpio_reg;
+            *reinterpret_cast<uint32_t*>(GPIO_PIN_MUX_REG[_pin_num]) = _io_mux_gpio_reg;
             *reinterpret_cast<uint32_t*>(GPIO_PIN0_REG              + (_pin_num * 4)) = _gpio_pin_reg;
             *reinterpret_cast<uint32_t*>(GPIO_FUNC0_OUT_SEL_CFG_REG + (_pin_num * 4)) = _gpio_func_out_reg;
 #if defined ( GPIO_ENABLE1_REG )
@@ -688,13 +697,14 @@ namespace lgfx
         return res;
       }
 
-      static ILight* _create_pwm_backlight(int16_t pin, uint8_t ch, uint32_t freq = 12000, bool invert = false)
+      static ILight* _create_pwm_backlight(int16_t pin, uint8_t ch, uint32_t freq = 12000, bool invert = false, uint8_t offset = 0)
       {
         auto bl = new lgfx::Light_PWM();
         auto cfg = bl->config();
         cfg.pin_bl = pin;
         cfg.freq   = freq;
         cfg.pwm_channel = ch;
+        cfg.offset = offset;
         cfg.invert = invert;
         bl->config(cfg);
         return bl;
@@ -909,8 +919,8 @@ namespace lgfx
 
         _pin_level(pin_cs, true);
 
-        Bus_Parallel16 bus;
-        auto cfg = bus.config();
+        Bus_Parallel16 bus_tmp;
+        auto cfg = bus_tmp.config();
         for (size_t i = 0; i < 16; ++i)
         {
           cfg.pin_data[i] = pin_data[i];
@@ -922,13 +932,13 @@ namespace lgfx
         // cfg.freq_read = 5000000;
         cfg.port   = port;
 
-        bus.config(cfg);
-        bus.init();
+        bus_tmp.config(cfg);
+        bus_tmp.init();
         _pin_reset(pin_rst, use_reset); // LCD RST
 
-        bool hit = judgement(&bus, pin_cs);
+        bool hit = judgement(&bus_tmp, pin_cs);
 
-        bus.release();
+        bus_tmp.release();
 
         if (hit)
         {
@@ -945,10 +955,10 @@ namespace lgfx
           auto p = result->panel;
           p->bus(bus);
           {
-            auto cfg = p->config();
-            if (pin_cs  >= 0) { cfg.pin_cs  = pin_cs;  }
-            if (pin_rst >= 0) { cfg.pin_rst = pin_rst; }
-            p->config(cfg);
+            auto cfg_panel = p->config();
+            if (pin_cs  >= 0) { cfg_panel.pin_cs  = pin_cs;  }
+            if (pin_rst >= 0) { cfg_panel.pin_rst = pin_rst; }
+            p->config(cfg_panel);
           }
           return true;
         }
@@ -1041,7 +1051,7 @@ namespace lgfx
           ESP_LOGI(LIBRARY_NAME, "[Autodetect] M5AtomS3");
           auto p = new Panel_GC9107();
           param->panel = p;
-          p->light(_create_pwm_backlight(GPIO_NUM_16, 7, 240)); /// AtomS3のバックライトはPWM周期が速いと点灯しない;
+          p->light(_create_pwm_backlight(GPIO_NUM_16, 7, 256, false, 48));
 
           {
             auto cfg = p->config();
@@ -1815,6 +1825,35 @@ namespace lgfx
         }
       };
 
+      struct _detector_M5StickCPlus2_t : public _detector_spi_t
+      {
+        constexpr _detector_M5StickCPlus2_t(void) :
+        _detector_spi_t
+        { board_t::board_M5StickCPlus2
+        , 0x04, 0xFF, 0x85 // ST7789
+        , 40000000, 15000000
+        , GPIO_NUM_15     // MOSI
+        , (gpio_num_t)-1  // MISO
+        , GPIO_NUM_13     // SCLK
+        , GPIO_NUM_14     // DC
+        , GPIO_NUM_5      // CS
+        , GPIO_NUM_12     // RST
+        , (gpio_num_t)-1  // TF CARD CS
+        , 0               // SPI MODE
+        , true            // SPI 3wire
+        , HSPI_HOST       // SPI HOST
+        } {}
+
+        void setup(_detector_result_t* result) const override
+        {
+          ESP_LOGI(LIBRARY_NAME, "[Autodetect] M5StickCPlus2");
+
+          auto p = new Panel_M5StickCPlus();
+          result->panel = p;
+          p->light(_create_pwm_backlight(GPIO_NUM_27, 7, 256, false, 40));
+        }
+      };
+
       struct _detector_M5StickC_t : public _detector_spi_t
       {
         constexpr _detector_M5StickC_t(void) :
@@ -2302,8 +2341,7 @@ namespace lgfx
         constexpr _detector_TTGO_T4_Display_t(void)
         : _detector_spi_t
         { board_t::board_TTGO_T4_Display
-          //, 0x04, 0xFF, 0x00 // ili9341
-        , 0, 0, 0 // cannot get id
+        , 0x04, 0xFF, 0x00 // ili9341
         , 40000000, 16000000
         , GPIO_NUM_23     // MOSI
         , GPIO_NUM_12     // MISO
@@ -2332,7 +2370,7 @@ namespace lgfx
             cfg.panel_height = 320;
             cfg.offset_x     = 0;
             cfg.offset_y     = 0;
-            cfg.offset_rotation  =  0;
+            cfg.offset_rotation  =  2;
             cfg.dummy_read_pixel =  8;
             cfg.dummy_read_bits  =  1;
             cfg.readable         =  true;
@@ -3065,7 +3103,7 @@ namespace lgfx
       static constexpr const _detector_t* detector_list[] =
       {
 
-#if defined ( LGFX_AUTODETECT ) || defined ( LGFX_M5ATOM_S3LCD )
+#if defined ( LGFX_AUTODETECT ) || defined ( LGFX_M5ATOMS3 ) || defined ( LGFX_M5ATOM_S3LCD )
         &detector_M5AtomS3,
 #endif
 #if defined ( LGFX_AUTODETECT ) || defined ( LGFX_M5STACK_CORES3 )
@@ -3151,8 +3189,9 @@ namespace lgfx
 
 #elif defined (CONFIG_IDF_TARGET_ESP32) || !defined (CONFIG_IDF_TARGET)
 
-      static constexpr const _detector_M5StickCPlus_t          detector_M5StickCPlus;
       static constexpr const _detector_M5StickC_t              detector_M5StickC;
+      static constexpr const _detector_M5StickCPlus_t          detector_M5StickCPlus;
+      static constexpr const _detector_M5StickCPlus2_t         detector_M5StickCPlus2;
       static constexpr const _detector_M5StackCoreInk_t        detector_M5StackCoreInk;
       static constexpr const _detector_TTGO_TWristband_t       detector_TTGO_TWristband;
       static constexpr const _detector_TTGO_TS_t               detector_TTGO_TS;
@@ -3179,6 +3218,15 @@ namespace lgfx
       static constexpr const _detector_WT32_SC01_t             detector_WT32_SC01;
 
       static constexpr const _detector_DDUINO32_XS_t           detector_DDUINO32_X;
+
+      static constexpr const _detector_t* detector_list_PICO_V3[] =
+      {
+
+#if defined ( LGFX_AUTODETECT ) || defined ( LGFX_M5STICK_C ) || defined ( LGFX_M5STICKC )
+        &detector_M5StickCPlus2,
+#endif
+        nullptr // terminator
+      };
 
       static constexpr const _detector_t* detector_list_PICO_D4[] =
       {
@@ -3290,6 +3338,10 @@ namespace lgfx
       default:
       case EFUSE_RD_CHIP_VER_PKG_ESP32PICOD4:
         detectors = detector_list_PICO_D4;
+        break;
+
+      case 6:
+        detectors = detector_list_PICO_V3;
         break;
       }
 
